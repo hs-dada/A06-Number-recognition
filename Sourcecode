@@ -1,0 +1,703 @@
+Lab：
+module Lab_11( 
+    input clk_100MHz, 
+    input Clk_Rx_Data_N, 
+    input Clk_Rx_Data_P, 
+    input [1:0]Rx_Data_N, 
+    input [1:0]Rx_Data_P, 
+    input Data_N, 
+    input Data_P, 
+    inout Camera_IIC_SDA, 
+    output Camera_IIC_SCL, 
+    output Camera_GPIO, 
+    output TMDS_Tx_Clk_N, 
+    output TMDS_Tx_Clk_P, 
+    output [2:0]TMDS_Tx_Data_N, 
+    output [2:0]TMDS_Tx_Data_P 
+    ); 
+    //时钟 
+    wire clk_100MHz_system; 
+    wire clk_200MHz; 
+    wire clk_50MHz; 
+    wire clk_10MHz; 
+    wire clk_100MHz_out; 
+    wire clk_Serial_out; 
+    //IIC 数据 
+    wire IIC_Rst; 
+    wire [7:0]Address;         //IIC 通讯从机设备地址 
+    wire [7:0]Data;            //IIC 写数据 
+    wire [15:0]Reg_Addr;       //寄存器地址 
+    wire [7:0]IIC_Read_Data; 
+    wire IIC_Busy;      
+    wire Reg2Addr; 
+    wire IIC_Write; 
+    reg IIC_Read=0; 
+    wire Camera_IIC_SDA_I; 
+    wire Camera_IIC_SDA_O; 
+    wire Camera_IIC_SDA_T; 
+    //HDMI 
+    wire [23:0]RGB_Data; 
+    wire RGB_HSync; 
+    wire RGB_VSync; 
+    wire RGB_VDE; 
+    wire clk_system; 
+    clk_wiz_0 
+clk_10(.clk_out1(clk_100MHz_system),.clk_out2(clk_200MHz),.clk_out3(clk_50MHz),.clk_out4(clk_10MHz),.clk_in1
+(clk_100MHz)); 
+    //三态门 
+    IOBUF Camera_IIC_SDA_IOBUF 
+           (.I(Camera_IIC_SDA_O), 
+           .IO(Camera_IIC_SDA), 
+           .O(Camera_IIC_SDA_I), 
+            .T(~Camera_IIC_SDA_T)); 
+    //摄像头驱动 
+    Driver_MIPI_0 Driver_MIPI0( 
+        .clk_200MHz(clk_200MHz), 
+        .Clk_Rx_Data_N(Clk_Rx_Data_N), 
+        .Clk_Rx_Data_P(Clk_Rx_Data_P), 
+        .Rx_Data_N(Rx_Data_N), 
+        .Rx_Data_P(Rx_Data_P), 
+        .Data_N(Data_N), 
+        .Data_P(Data_P), 
+        .Camera_GPIO(Camera_GPIO), 
+        .RGB_Data(RGB_Data), 
+        .RGB_HSync(RGB_HSync), 
+        .RGB_VSync(RGB_VSync), 
+        .RGB_VDE(RGB_VDE), 
+        .clk_100MHz_out(clk_100MHz_out) 
+    ); 
+    //RGBToDvi 实例化 
+    rgb2dvi_0 rgb2dvi( 
+        .TMDS_Clk_p(TMDS_Tx_Clk_P), 
+        .TMDS_Clk_n(TMDS_Tx_Clk_N), 
+        .TMDS_Data_p(TMDS_Tx_Data_P), 
+        .TMDS_Data_n(TMDS_Tx_Data_N), 
+        .aRst_n(1), 
+        .vid_pData(RGB_Data), 
+        .vid_pVDE(RGB_VDE), 
+        .vid_pHSync(RGB_HSync), 
+        .vid_pVSync(RGB_VSync), 
+        .PixelClk(clk_100MHz_out) 
+        ); 
+    //IIC 驱动 
+    Driver_IIC_0 Driver_IIC0( 
+        .clk(clk_100MHz_system), 
+        .Rst(IIC_Rst), 
+        // 与控制器通信信号 
+        .Addr(Address), 
+        .Reg_Addr(Reg_Addr), 
+        .Data(Data), 
+        .IIC_Write(IIC_Write), 
+        .IIC_Read(IIC_Read), 
+        .IIC_Read_Data(IIC_Read_Data), 
+        .IIC_Busy(IIC_Busy), 
+        .Reg_2Addr(Reg2Addr), 
+        // 外部信号 
+        .IIC_SCL(Camera_IIC_SCL), 
+        .IIC_SDA_In(Camera_IIC_SDA_I), 
+        .SDA_Dir(Camera_IIC_SDA_T),// 控制数据方向,高电平为数据输出 
+        .SDA_Out(Camera_IIC_SDA_O)// 输出数据 
+    ); 
+    //OV5647 摄像头初始化 
+    OV5647_Init_0 Diver_OV5647_Init( 
+        .clk_10MHz(clk_10MHz), 
+        .IIC_Busy(IIC_Busy), 
+        .Addr(Address), 
+        .Reg_Addr(Reg_Addr), 
+        .Reg_Data(Data), 
+        .IIC_Write(IIC_Write), 
+        .Reg2Addr(Reg2Addr), 
+        .Ctrl_IIC(IIC_Rst) 
+        ); 
+    digital recognition();
+endmodule 
+
+Recognize_Top：
+module Recognize_Top 
+#(parameter YUZHI = 74, HANG220 = 219, HANG360 = 359, HANG500 = 499, HANG550 = 549, HANG740 = 739, TURE = 1, 
+SMALL1 = 120, SMALL2 = 40, MIDDLES = 120, MIDDLEY = 240, BIG = 320) 
+    ( 
+    input rst_n,     
+    input vid_clk, 
+    input vid_hsync, 
+    input vid_vsync, 
+    input vid_active_video, 
+    input [7:0] vid_data,  
+    input [10:0] hdata, 
+    input [9:0] vdata, 
+     
+    output  [23:0] vid_data_out,  
+    output  vid_hsync_out, 
+    output  vid_vsync_out, 
+    output  vid_active_video_out, 
+    output  [7:0] data8_out 
+    ); 
+    wire data_out1, data_in; 
+    wire [2:0] shape; 
+     
+    Threshold_Judge #( 
+        .YUZHI(YUZHI), 
+        .HANG220(HANG220), 
+        .HANG360(HANG360), 
+        .HANG500(HANG500), 
+        .HANG550(HANG550) 
+         )  
+      Threshold_Judge_inst ( 
+          .vid_clk(vid_clk),  
+          .rst_n(rst_n),  
+          .data_in(vid_data), 
+          .vdata(vdata),  
+          .data_out24(vid_data_out),  
+          .data_out1(data_out1), 
+          .shape(shape) , 
+          .data8_out(data8_out) 
+          );  
+    assign    data_in = ~data_out1; 
+    Shape_Judge#( 
+            .TURE(TURE), 
+            .HANG220(HANG220), 
+            .HANG360(HANG360), 
+            .HANG500(HANG500), 
+            .HANG740(HANG740), 
+ 
+            .SMALL1(SMALL1), 
+            .SMALL2(SMALL2), 
+            .MIDDLES(MIDDLES), 
+            .MIDDLEY(MIDDLEY), 
+            .BIG(BIG) 
+             )  
+             Shape_Judge_inst   ( 
+                        .rst_n(rst_n),  
+                        .vid_clk(vid_clk), 
+                         
+                        .vid_hsync(vid_hsync), 
+                        .vid_vsync(vid_vsync), 
+                        .vid_active_video(vid_active_video), 
+                        .data_in(data_in), 
+                         
+                        .hdata(hdata), 
+                        .vdata(vdata), 
+                         
+                        .vid_hsync_out(vid_hsync_out), 
+                        .vid_vsync_out(vid_vsync_out), 
+                        .vid_active_video_out(vid_active_video_out), 
+                                                 
+                        .shape(shape)  
+                        );     
+endmodule 
+
+Shape_Judge：
+module Shape_Judge 
+       #(parameter HANG220 = 219, HANG360 = 359, HANG500 = 499, HANG550 = 549, HANG740 = 739, TURE = 1, 
+SMALL1 = 120, SMALL2 = 40, MIDDLES = 120, MIDDLEY = 240, BIG = 320)              
+                     
+                    ( 
+                    input rst_n, 
+                    input vid_clk, 
+                    input vid_hsync, 
+                    input vid_vsync, 
+                    input vid_active_video, 
+                    input data_in, 
+ 
+                    input [10:0] hdata, 
+                    input [9:0] vdata, 
+                     
+                    output reg vid_hsync_out,// 
+                    output reg vid_vsync_out,// 
+                    output reg vid_active_video_out,// 
+                     
+                    output [2:0] shape//               
+                    ); 
+                                  
+    reg [10:0] addhang1, addhang2, addhang3; 
+    reg concrast12, concrast23; 
+    reg [10:0] subtract12, subtract23; 
+    reg vid_hsync_out_1, vid_vsync_out_1, vid_active_video_out_1; 
+     
+    wire sanjiao, yuan, fang; 
+     
+    parameter AAA = 219; 
+ 
+    always@(posedge vid_clk)//vid 信号真题延迟两个阈值判断时钟周期 
+    begin 
+        if(!rst_n) 
+            begin 
+                vid_hsync_out <= 0; 
+                vid_vsync_out <= 0; 
+                vid_active_video_out <= 0; 
+            end 
+        else 
+            begin 
+            vid_hsync_out_1 <= vid_hsync; 
+                vid_vsync_out_1 <= vid_vsync; 
+                vid_active_video_out_1 <= vid_active_video; 
+                 
+                vid_hsync_out <= vid_hsync_out_1; 
+                vid_vsync_out <= vid_vsync_out_1; 
+                vid_active_video_out <= vid_active_video_out_1; 
+            end 
+    end 
+     
+    always@(posedge vid_clk)//检测第 220 行；vdata == 219。 
+    begin 
+        if(!rst_n) 
+            begin 
+                addhang1 <= 0; 
+            end 
+        else 
+            begin  
+                if(vdata == HANG740)  
+                    begin 
+                        addhang1 <= 0; 
+                    end 
+                else if(vdata == HANG220)  
+                    begin 
+                        addhang1 <= addhang1 + data_in; 
+                    end 
+                else 
+                   begin 
+                       addhang1 <= addhang1; 
+                   end 
+            end    
+    end 
+     
+     
+    always@(posedge vid_clk)//检测第 360 行；vdata == 359。 
+    begin 
+        if(!rst_n) 
+            begin 
+                addhang2 <= 11'd15; 
+            end 
+        else 
+            begin  
+                if(vdata == HANG740)  
+                    begin 
+                    addhang2 <= 11'd15; 
+                    end 
+                else if(vdata == HANG360) 
+                    begin 
+                        addhang2 <= addhang2 + data_in; 
+                    end 
+                else 
+                   begin 
+                       addhang2 <= addhang2; 
+                   end 
+            end    
+    end          
+ 
+    always@(posedge vid_clk)//检测第 500 行；vdata == 499。 
+    begin 
+        if(!rst_n) 
+            begin 
+                addhang3 <=  11'd20; 
+            end 
+        else 
+            begin  
+                if(vdata == HANG740)  
+                    begin 
+                        addhang3 <= 11'd20; 
+                    end 
+                else if(vdata == HANG500) 
+                    begin 
+                        addhang3 <= addhang3 + data_in; 
+                    end 
+                else 
+                   begin 
+                       addhang3 <= addhang3; 
+                   end 
+            end    
+    end 
+     
+    always@(posedge vid_clk)//220 行与 360 行长度大小判断 
+    begin 
+        if(!rst_n) 
+            begin 
+                concrast12 <= 0; 
+            end 
+        else 
+            begin 
+            if(addhang1 > addhang2)  
+                   begin 
+                       concrast12 <= 1; 
+                   end 
+                else 
+                   begin 
+                       concrast12 <= 0; 
+                   end 
+            end    
+    end 
+     
+    always@(posedge vid_clk)//360 行与 500 行长度大小判断 
+    begin 
+        if(!rst_n) 
+            begin 
+                concrast23 <= 0; 
+            end 
+        else 
+            begin  
+                if(addhang2 > addhang3)  
+                   begin 
+                       concrast23 <= 1; 
+                   end 
+                else 
+                   begin 
+                       concrast23 <= 0; 
+                   end 
+            end    
+    end     
+           
+    always@(posedge vid_clk)//220 行与 360 行数值差 
+    begin 
+        if(!rst_n) 
+            begin 
+                subtract12 <= 0; 
+            end 
+        else 
+            begin  
+                if(concrast12)  
+                   begin 
+                       subtract12 <= addhang1 - addhang2; 
+                   end 
+                else 
+                   begin 
+                   subtract12 <= addhang2 - addhang1; 
+                   end 
+            end    
+    end 
+     
+    always@(posedge vid_clk)//220 行与 360 行数值差 
+    begin 
+        if(!rst_n) 
+            begin 
+                subtract23 <= 0; 
+            end 
+        else 
+            begin  
+                if(concrast23)  
+                   begin 
+                       subtract23 <= addhang2 - addhang3; 
+                   end 
+                else 
+                   begin 
+                       subtract23 <= addhang3 - addhang2; 
+                   end 
+            end    
+    end 
+     
+    assign sanjiao = ((MIDDLES < subtract12 <= BIG) && (MIDDLES < subtract23 <= BIG)&& (!concrast12) && 
+(!concrast23)) ? TURE : !TURE;//1  :  0    
+    assign yuan =  ((SMALL2 < subtract12 <= MIDDLEY) && (SMALL2 < subtract23 <= MIDDLEY) && (!concrast12) && 
+(concrast23)) ? TURE : !TURE;//1  :  0    
+    assign fang =  ((subtract12 <= SMALL1) && (subtract23 <= AAA)) ? TURE : !TURE;//1  :  0    
+     
+    assign shape[0] = sanjiao; 
+    assign shape[1] = yuan; 
+    assign shape[2] = fang; 
+endmodule 
+
+Driver_HDMI：
+`define Video_Mode_1920_1080 0 
+`define Video_Mode_1280_720 1 
+//HDMI 驱动 
+module Driver_HDMI( 
+    input clk,                          //时钟 
+    input Rst,                          //复位信号,低电平复位 
+    input Video_Mode,                   //视频格式 
+    input [23:0]RGB_In,                 //输入数据 
+    output [23:0]RGB_Data,              //输出数据 
+    output reg RGB_HSync=0,            //行信号 
+    output reg RGB_VSync=0,            //场信号 
+    output reg RGB_VDE=0,              //数据有效信号 
+    output reg [11:0]Set_X=0,          //图像坐标 X 
+    output reg [11:0]Set_Y=0           //图像坐标 Y 
+    ); 
+    parameter H_ACTIVE_1280_720 = 16'd1280; 
+    parameter H_FP_1280_720 = 16'd110; 
+    parameter H_SYNC_1280_720 = 16'd40; 
+    parameter H_BP_1280_720 = 16'd220;  
+    parameter V_ACTIVE_1280_720 = 16'd720; 
+    parameter V_FP_1280_720     = 16'd5; 
+    parameter V_SYNC_1280_720  = 16'd5; 
+    parameter V_BP_1280_720    = 16'd20; 
+    parameter H_TOTAL_1280_720 = H_ACTIVE_1280_720 + H_FP_1280_720 + H_SYNC_1280_720 + H_BP_1280_720; 
+    parameter V_TOTAL_1280_720 = V_ACTIVE_1280_720 + V_FP_1280_720 + V_SYNC_1280_720 + V_BP_1280_720; 
+     
+    parameter H_ACTIVE_1920_1080 = 16'd1920; 
+    parameter H_FP_1920_1080 = 16'd88; 
+    parameter H_SYNC_1920_1080 = 16'd44; 
+    parameter H_BP_1920_1080 = 16'd148;  
+    parameter V_ACTIVE_1920_1080 = 16'd1080; 
+    parameter V_FP_1920_1080     = 16'd4; 
+    parameter V_SYNC_1920_1080  = 16'd5; 
+    parameter V_BP_1920_1080    = 16'd36; 
+    parameter H_TOTAL_1920_1080 = H_ACTIVE_1920_1080 + H_FP_1920_1080 + H_SYNC_1920_1080 + H_BP_1920_1080; 
+    parameter V_TOTAL_1920_1080 = V_ACTIVE_1920_1080 + V_FP_1920_1080 + V_SYNC_1920_1080 + V_BP_1920_1080; 
+     
+    reg [11:0]H_ACTIVE=0;   //行有效长度（像素时钟周期个数） 
+    reg [11:0]H_FP=0;       //行同步前肩长度 
+    reg [11:0]H_SYNC=0;     //行同步长度 
+    reg [11:0]H_BP=0;       //行同步后肩长度 
+    reg [11:0]V_ACTIVE=0;   //场有效长度（行的个数） 
+    reg [11:0]V_FP=0;       //场同步前肩长度 
+    reg [11:0]V_SYNC= 0;    //场同步长度 
+    reg [11:0]V_BP=0;       //场同步后肩长度 
+    reg [11:0]H_TOTAL=0;    //行总长度 
+    reg [11:0]V_TOTAL=0;    //场总长度 
+     
+    //行,场信号计数 
+    reg [11:0]HSync_Cnt=0; 
+    reg [11:0]VSync_Cnt=0; 
+    //行,场有效信号 
+    reg H_De=0; 
+    reg V_De=0; 
+     
+    //RGB 信号连线 
+    assign RGB_Data=RGB_In; 
+    //图像 X,Y 坐标获取 
+    always@(posedge clk or negedge Rst) 
+        begin 
+            //低电平复位 
+            if(!Rst) 
+                begin 
+                    Set_X<=0; 
+                    Set_Y<=0; 
+                end 
+            else 
+                begin 
+                    //行信号有效时,开始获取 X 坐标 
+                    if(HSync_Cnt>=H_FP + H_SYNC + H_BP - 1) 
+                        Set_X <= HSync_Cnt-(H_FP + H_SYNC + H_BP - 1); 
+                    //场信号有效时,开始获取 Y 坐标 
+                    if(VSync_Cnt>=V_FP + V_SYNC + V_BP - 1) 
+                        Set_Y<=VSync_Cnt-(V_FP + V_SYNC + V_BP - 1); 
+                end 
+        end 
+    //图像格式获取 
+    always@(*) 
+        begin 
+            case(Video_Mode) 
+                `Video_Mode_1920_1080: 
+                    begin 
+                        H_ACTIVE=H_ACTIVE_1920_1080;   //行有效长度（像素时钟周期个数） 
+                        H_FP=H_FP_1920_1080;           //行同步前肩长度 
+                        H_SYNC=H_SYNC_1920_1080;       //行同步长度 
+                        H_BP=H_BP_1920_1080;           //行同步后肩长度 
+                        V_ACTIVE=V_ACTIVE_1920_1080;   //场有效长度（行的个数） 
+                        V_FP=V_FP_1920_1080;           //场同步前肩长度 
+                        V_SYNC=V_SYNC_1920_1080;       //场同步长度 
+                        V_BP=V_BP_1920_1080;           //场同步后肩长度 
+                        H_TOTAL=H_TOTAL_1920_1080;     //行总长度 
+                        V_TOTAL=V_TOTAL_1920_1080;     //场总长度 
+                    end 
+                `Video_Mode_1280_720: 
+                    begin 
+                        H_ACTIVE=H_ACTIVE_1280_720;    //行有效长度（像素时钟周期个数） 
+                        H_FP=H_FP_1280_720;            //行同步前肩长度 
+                        H_SYNC=H_SYNC_1280_720;        //行同步长度 
+                        H_BP=H_BP_1280_720;            //行同步后肩长度 
+                        V_ACTIVE=V_ACTIVE_1280_720;    //场有效长度（行的个数） 
+                        V_FP=V_FP_1280_720;            //场同步前肩长度 
+                        V_SYNC=V_SYNC_1280_720;        //场同步长度 
+                        V_BP=V_BP_1280_720;            //场同步后肩长度 
+                        H_TOTAL=H_TOTAL_1280_720;      //行总长度 
+                        V_TOTAL=V_TOTAL_1280_720;      //场总长度 
+                    end 
+            endcase 
+        end 
+    //行计数 
+    always@(posedge clk or negedge Rst) 
+        begin 
+            //低电平复位 
+            if(!Rst) 
+                HSync_Cnt<=0; 
+            else 
+                begin 
+                    //行计数到最大值清零 
+                    if(HSync_Cnt==H_TOTAL-1) 
+                        HSync_Cnt<=0; 
+                    else 
+                        HSync_Cnt<=HSync_Cnt+1; 
+                        end 
+        end 
+    //场计数 
+    always@(posedge clk or negedge Rst) 
+        begin 
+            //低电平复位 
+            if(!Rst) 
+                VSync_Cnt<=0; 
+            else 
+                begin 
+                    //行计数到 H_FP-1 时,场计数 
+                    if(HSync_Cnt==H_FP-1) 
+                        begin 
+                            //场计数到最大值清零 
+                            if(VSync_Cnt==V_TOTAL-1) 
+                                VSync_Cnt<=0; 
+                            else 
+                                VSync_Cnt<=VSync_Cnt+1; 
+                        end 
+                end 
+        end 
+    //行信号有效 
+    always@(posedge clk or negedge Rst) 
+        begin 
+            //低电平复位 
+            if(!Rst) 
+                H_De<=0; 
+            else 
+                begin 
+                    //行计数满足一个周期,行信号开始有效 
+                    if(HSync_Cnt==H_FP + H_SYNC + H_BP - 1) 
+                        H_De<=1; 
+                    //行计数到最大值,行信号开始无效 
+                    else if(HSync_Cnt==H_TOTAL-1) 
+                        H_De<=0;                     
+                end 
+        end 
+    //场信号有效 
+    always@(posedge clk or negedge Rst) 
+        begin 
+            //低电平复位 
+            if(!Rst) 
+                V_De<=0; 
+            else 
+            begin 
+                    //行计数为 H_FP-1，即行同步开始时 
+                    if(HSync_Cnt==H_FP-1) 
+                        begin 
+                            //场计数满足一个周期,场信号有效 
+                            if(VSync_Cnt==V_FP + V_SYNC + V_BP - 1) 
+                                V_De<=1; 
+                            //场计数到最大值,场信号开始无效 
+                            else if(VSync_Cnt==V_TOTAL-1) 
+                                V_De<=0; 
+                        end     
+                end 
+        end 
+    //数据有效信号输出 
+    always@(posedge clk or negedge Rst) 
+        begin 
+            //低电平复位 
+            if(!Rst) 
+                RGB_VDE<=0; 
+            else 
+                //数据有效信号输出 
+                RGB_VDE<=H_De&V_De;                 
+        end   
+    //行信号输出 
+    always@(posedge clk or negedge Rst) 
+        begin 
+            //低电平复位 
+            if(!Rst) 
+                RGB_HSync<=0; 
+            else 
+                begin 
+                    //行同步开始时,行信号开始为高 
+                    if(HSync_Cnt==H_FP-1) 
+                        RGB_HSync<=1; 
+                    //行同步结束时,行信号开始为低 
+                    else if(HSync_Cnt==H_FP + H_SYNC - 1) 
+                        RGB_HSync<=0; 
+                end                 
+        end    
+    //场信号输出 
+    always@(posedge clk or negedge Rst)            
+        begin 
+            //低电平复位 
+            if(!Rst) 
+            RGB_VSync<=0; 
+            else 
+                begin 
+                    //行同步开始时 
+                    if(HSync_Cnt==H_FP-1) 
+                        begin 
+                            //场同步开始时,场信号为高 
+                            if(VSync_Cnt==V_FP-1) 
+                                RGB_VSync<=1; 
+                            //场同步结束时,场信号开始为低 
+                            else if(VSync_Cnt==V_FP + V_SYNC - 1) 
+                                RGB_VSync<=0; 
+                        end 
+                end 
+        end 
+endmodule
+
+RGB_To_Gray：
+module RGB_To_Gray( 
+    input [7:0]RGB_Data_R,              //像素数据 R 
+    input [7:0]RGB_Data_G,              //像素数据 G 
+    input [7:0]RGB_Data_B,              //像素数据 B 
+    input [4:0]Accuracy_Num,            //灰度化精度位数 
+    output [7:0]Gray_Data               //输出灰度数据 
+    ); 
+    //暂存灰度数据 
+    reg [32:0]Out_Data=0; 
+    //输出灰度数据 
+    assign Gray_Data=Out_Data[7:0]; 
+    //灰度值计算 
+    always@(*) 
+        begin 
+            //不同的精度位数,0-20 位 
+            case(Accuracy_Num) 
+                0:Out_Data=(RGB_Data_R*30+RGB_Data_B*11+RGB_Data_G*59+50)/100; 
+                1:Out_Data=(RGB_Data_R*30+RGB_Data_B*11+RGB_Data_G*59+50)/100; 
+                2:Out_Data=(RGB_Data_R*1+RGB_Data_B*1+RGB_Data_G*2)>>2; 
+                3:Out_Data=(RGB_Data_R*2+RGB_Data_B*1+RGB_Data_G*5)>>3; 
+                4:Out_Data=(RGB_Data_R*4+RGB_Data_B*2+RGB_Data_G*10)>>4; 
+                5:Out_Data=(RGB_Data_R*9+RGB_Data_B*4+RGB_Data_G*19)>>5; 
+                6:Out_Data=(RGB_Data_R*19+RGB_Data_B*8+RGB_Data_G*37)>>6; 
+                7:Out_Data=(RGB_Data_R*38+RGB_Data_B*15+RGB_Data_G*75)>>7; 
+                8:Out_Data=(RGB_Data_R*76+RGB_Data_B*30+RGB_Data_G*150)>>8; 
+                9:Out_Data=(RGB_Data_R*153+RGB_Data_B*59+RGB_Data_G*300)>>9; 
+                10:Out_Data=(RGB_Data_R*306+RGB_Data_B*117+RGB_Data_G*601)>>10; 
+                11:Out_Data=(RGB_Data_R*612+RGB_Data_B*234+RGB_Data_G*1202)>>11; 
+                12:Out_Data=(RGB_Data_R*1224+RGB_Data_B*467+RGB_Data_G*2405)>>12; 
+                13:Out_Data=(RGB_Data_R*2449+RGB_Data_B*934+RGB_Data_G*4809)>>13; 
+                14:Out_Data=(RGB_Data_R*4898+RGB_Data_B*1868+RGB_Data_G*9618)>>14; 
+                15:Out_Data=(RGB_Data_R*9797+RGB_Data_B*3736+RGB_Data_G*19235)>>15; 
+                16:Out_Data=(RGB_Data_R*19595+RGB_Data_B*7472+RGB_Data_G*38469)>>16; 
+                17:Out_Data=(RGB_Data_R*39190+RGB_Data_B*14943+RGB_Data_G*76939)>>17; 
+                18:Out_Data=(RGB_Data_R*78381+RGB_Data_B*29885+RGB_Data_G*153878)>>18; 
+                19:Out_Data=(RGB_Data_R*156762+RGB_Data_B*59769+RGB_Data_G*307757)>>19; 
+                default:Out_Data=(RGB_Data_R*313524+RGB_Data_B*119538+RGB_Data_G*615514)>>20; 
+            endcase 
+        end 
+endmodule 
+
+system：
+## Clock signal 100 MHz 
+set_property -dict {PACKAGE_PIN H4 IOSTANDARD LVCMOS33} [get_ports clk_100MHz] 
+create_clock -period 10.000 -name sys_clk_pin -waveform {0.000 5.000} -add [get_ports clk_100MHz] 
+#MIPI 
+set_property PACKAGE_PIN M12 [get_ports Camera_GPIO] 
+set_property IOSTANDARD LVCMOS33 [get_ports Camera_GPIO] 
+ 
+set_property -dict {PACKAGE_PIN K11 IOSTANDARD LVCMOS33} [get_ports Camera_IIC_SCL] 
+set_property -dict {PACKAGE_PIN K12 IOSTANDARD LVCMOS33} [get_ports Camera_IIC_SDA] 
+ 
+set_property PULLUP true [get_ports Camera_IIC_SCL] 
+set_property PULLUP true [get_ports Camera_IIC_SDA] 
+ 
+set_property INTERNAL_VREF 0.6 [get_iobanks 14] 
+ 
+set_property -dict {PACKAGE_PIN C10 IOSTANDARD HSUL_12} [get_ports Data_N] 
+set_property -dict {PACKAGE_PIN D10 IOSTANDARD HSUL_12} [get_ports Data_P] 
+ 
+set_property -dict {PACKAGE_PIN F11 IOSTANDARD LVDS_25} [get_ports Clk_Rx_Data_N] 
+set_property -dict {PACKAGE_PIN G11 IOSTANDARD LVDS_25} [get_ports Clk_Rx_Data_P] 
+ 
+set_property -dict {PACKAGE_PIN J12 IOSTANDARD LVDS_25} [get_ports {Rx_Data_N[0]}] 
+set_property -dict {PACKAGE_PIN J11 IOSTANDARD LVDS_25} [get_ports {Rx_Data_P[0]}] 
+set_property -dict {PACKAGE_PIN P11 IOSTANDARD LVDS_25} [get_ports {Rx_Data_N[1]}] 
+set_property -dict {PACKAGE_PIN P10 IOSTANDARD LVDS_25} [get_ports {Rx_Data_P[1]}] 
+create_clock -period 4.761 -name dphy_hs_clock_p -waveform {0.000 2.380} [get_ports Clk_Rx_Data_P] 
+ 
+##HDMI Tx 
+set_property -dict {PACKAGE_PIN F4 IOSTANDARD TMDS_33} [get_ports TMDS_Tx_Clk_N] 
+set_property -dict {PACKAGE_PIN G4 IOSTANDARD TMDS_33} [get_ports TMDS_Tx_Clk_P] 
+set_property -dict {PACKAGE_PIN F1 IOSTANDARD TMDS_33} [get_ports {TMDS_Tx_Data_N[0]}] 
+set_property -dict {PACKAGE_PIN G1 IOSTANDARD TMDS_33} [get_ports {TMDS_Tx_Data_P[0]}] 
+set_property -dict {PACKAGE_PIN D2 IOSTANDARD TMDS_33} [get_ports {TMDS_Tx_Data_N[1]}] 
+set_property -dict {PACKAGE_PIN E2 IOSTANDARD TMDS_33} [get_ports {TMDS_Tx_Data_P[1]}] 
+set_property -dict {PACKAGE_PIN C1 IOSTANDARD TMDS_33} [get_ports {TMDS_Tx_Data_N[2]}] 
+set_property -dict {PACKAGE_PIN D1 IOSTANDARD TMDS_33} [get_ports {TMDS_Tx_Data_P[2]}] 
